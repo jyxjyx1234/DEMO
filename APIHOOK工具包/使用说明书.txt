@@ -1,0 +1,118 @@
+这是我编写的一个工具包。核心是FONTCHANGER.dll，里面实现了一系列常用的API HOOK，可以实现标题修改、字体加载和修改，以及实现自动转区。hook.ini为配置文档。DLLLOADER、proxy文件夹中为DLL注入相关组件，可以参考我之前发的教程：https://www.ai2.moe/topic/28961-%E5%A6%82%E4%BD%95%E5%AF%B9%E7%A8%8B%E5%BA%8F%E5%A8%98%E4%B8%BA%E6%89%80%E6%AC%B2%E4%B8%BA%EF%BC%9F%E4%B9%8B%E4%BA%8C%EF%BC%9Adll%E6%B3%A8%E5%85%A5/#comment-343595
+
+其中还有一个文本替换工具，对galtransl输出的gt_output文件夹中的译文进行处理，通过字体替换，实现汉化文本的正常显示，解决sjis编码无法显示所有中文汉字的问题。这个工具需要python3.x。
+
+下面将简单介绍这个工具包的使用方法：
+
+# 文本替换工具
+
+将gt_output文件夹放在目录下，运行 `替换.bat`即可，根据提示选择模式：
+
+1. （推荐）通过更改导入表的方法注入。部分加壳游戏或对exe进行校验的游戏无法使用此方法。
+2. 通过dll劫持。这个方法适用范围更广，但是在不同windows版本内兼容性较差，部分电脑可能无法成功导入。temp文件夹中提供了多个劫持dll（`winmm`、`dxgi`、`version`、`dsound`），默认使用 `winmm.dll`。如果发现没有生效（即显示文本错乱），可以尝试替换dll。
+3. （推荐）通过启动器注入。需要配合DLLLOADER.exe使用，并且在hook.ini中填写相关配置。游戏需要从DLLLOADER.exe启动（DLLLOADER.exe可以自己改名）
+
+被修改的原字体默认为文泉驿微米黑，也可放入并选择其他字体。需要使用同时支持中文汉字和日文汉字的字体。如果输入REPLACE，则不会替换字体，而是生成替换表，供FONTCHANGER.dll的REPLACE模式使用。否则，会生成一个名为font.ttf，字体名为font的字体，用FONTCHANGER.dll调用该字体即可。
+
+部分字体中不存在的特殊符号需要手动去除（如emoji），或者更换字符更全的字体。
+
+替换后的译文在 `release`文件夹中的 `gt_output`内。`release`中除去 `gt_output`外其他所有文件均需要放入补丁中。 `gt_output`中的文本以sjis编码替换到脚本中即可。
+
+（如果不需要自动转区，可以删除 `LoaderDll.dll`和 `LocaleEmulator.dll`）
+
+原理：这个工具将SJIS编码不支持的汉字临时替换为了其他汉字，然后通过修改字体或生成替换表（即处理文本显示函数），让替换后的汉字在显示时显示为替换前的汉字，从而能够在不修改游戏编码的情况下正常显示中文。
+
+与SE等工具中自动替换的优势：
+
+1. 本工具提供了更多的注入方式，兼容性更强。
+2. 本工具的替换表根据译文动态生成，从原理上规避了固定替换表缺字的问题，以及规避了部分需要正常显示的文字被错误替换的问题。（比如SE的旧版替换表会让“澪”字无法正常显示，尽管后面的更新去掉了这对替换，但是本工具的动态生成的替换规则不可能出现这种问题）
+
+# FONTCHANGER
+
+[GLOBAL]
+#调试信息
+DEBUG=0
+#自动转区，需要放入两个LE的dll
+LE=1
+#加载其他DLL。使用proxy时这里填入FONTCHANGER.dll即可。
+LOADDLL=FONTCHANGER.dll
+#MED引擎专用。自动清除MED引擎字体缓存
+MED=0
+#majiro专用。自动清除majiro引擎字体缓存
+MAJIRO=0
+
+DEBUG：为1时，显示调试信息。
+
+LE：为1时，实现自动转区。需要将LE文件夹中的两个dll放在游戏目录下。
+
+LOADDLL：在通过dll劫持加载dll时，需要在这里写入FONTCHANGER.dll，否则没有影响。
+
+MED：MED引擎专用。为1时，自动清除MED引擎字体缓存。对MED引擎如果不清理，后续的字体替换可能无法正常工作。
+
+MAJIRO：majiro专用。为1时，自动清除majiro引擎字体缓存。对majiro引擎如果不清理，后续的字体替换可能无法正常工作。
+
+
+[FONT]
+#模式
+A=1
+IA=1
+W=1
+IW=0
+#字体名
+FONTNAME=
+#加载字体文件
+FONTFILENAME=
+#字体大小调节，100为原大小
+HEIGHTSCALEFACTOR=100
+WIDTHSCALEFACTOR=100
+#调节粗细
+WEIGHT=600
+#调节字符集（134为gbk）
+CHARSET=128
+
+A\IA\W\IW：分别为CreateFontA、CreateFontInderectA、CreateFontW、CreateFontCreateFontW四个函数hook的开关。IW有可能遇到一些特别的问题，不建议开；其他都可以开上。
+
+FONTNAME：字体名。注意与字体文件名不一定相同！双击字体，右上角的名字即为字体名。常用：SimSun（宋体），SimHei（黑体），Microsoft YaHei UI（微软雅黑）。如果使用文本替换工具生成的字体，这里填入font即可。
+
+FONTFILENAME：可以从文件目录加载一个字体文件，无需手动安装字体。如果使用文本替换工具生成的字体，这里填入font.ttf即可。
+
+HEIGHTSCALEFACTOR、WIDTHSCALEFACTOR：调节字体的宽、高缩放倍率。必须为整数。100为原大小。
+
+WEIGHT：调整字体粗细。
+
+CHARSET：调整字符集。128为sjis，134为gbk。这里需要与脚本中的编码一致。如果以gbk注入脚本，这里改为134；如果以sjis编码注入脚本，则为128。使用文本替换工具时，是以sjis编码注入的。
+
+[WINDOW]
+ENABLE=0
+#新旧窗口名
+ORI=
+NEW=
+#CHECKORI设为0时，将不检查原标题是否与ORI相同
+CHECKORI=1
+
+ENABLE：开关，为1时才启用窗口标题替换。
+
+CHECKORI：是否检查原标题。如果原标题与ORI中的不同，则不会替换标题。
+
+ORI：原标题。只有CHECKORI为1时才会用到，否则直接留空即可。
+
+NEW：新标题。
+
+[TEXTREPLACE]
+#MODE1为TextOutA，2为GetGlyphOutlineA，3为ExtTextOutA
+#局限性很大，尤其是MODE1可能会有大量奇怪的BUG
+#需要创建一个名为replace.bin的文件，其中以UTF8编码放入替换表，格式：這这説说
+MODE=0
+
+MODE为0时不启动，1-3如注释所示对应3种不同函数的hook。在文本替换工具中使用REPLACE模式时会自动生成相关的文件。这个方法只针对一小部分游戏有用。
+
+[LOADER]
+#DLLLOADER.exe用
+#是否管理员模式启动
+ADMIN=0
+#加载的dll路径
+DLL=FONTCHANGER.dll
+#游戏原exe路径
+TARGET=
+
+配合DLLLOADER.exe使用，可以将FONTCHANGER.dll注入游戏。
